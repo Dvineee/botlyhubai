@@ -52,14 +52,16 @@ export default function App() {
   const fetchBots = async () => {
     try {
       const res = await fetch("/api/bots");
+      if (!res.ok) throw new Error(`Sunucu Hatası: ${res.status}`);
       const data = await res.json();
       setBots(data);
       if (data.length > 0 && !activeBotId) {
         setActiveBotId(data[0].id);
       }
-      setLoading(false);
     } catch (err) {
       console.error("Botlar yüklenemedi", err);
+    } finally {
+      setLoading(false);
     }
   };
 
