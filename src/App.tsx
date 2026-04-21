@@ -30,6 +30,7 @@ interface InitialStatus {
   tokenSet: boolean;
   metrics: Metrics;
   config: BotConfig;
+  lastError: string | null;
 }
 
 export default function App() {
@@ -179,6 +180,14 @@ export default function App() {
                       <Activity size={14} /> Canlı Loglar
                     </div>
                     <div className="bg-slate-950 rounded-xl p-4 font-mono text-[10px] space-y-2 h-48 overflow-y-auto border border-white/5 scrollbar-thin">
+                      {status?.lastError && (
+                        <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg mb-2">
+                          <p className="text-red-400 font-bold uppercase mb-1 flex items-center gap-1">
+                            <Info size={10} /> Kritik Hata:
+                          </p>
+                          <p className="text-red-300 font-mono text-[9px] break-all">{status.lastError}</p>
+                        </div>
+                      )}
                       <LogLine type="sys" msg="Çekirdek başarıyla başlatıldı." />
                       <LogLine type="mem" msg="Hafıza katmanı aktif edildi." />
                       {status?.botActive ? <LogLine type="bot" msg="Telegram API bağlantısı kuruldu." /> : <LogLine type="err" msg="Token eksik: Yapılandırma bekleniyor." />}

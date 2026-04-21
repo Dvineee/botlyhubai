@@ -63,6 +63,11 @@ if (token) {
     totalMessages++;
 
     try {
+      // API Key Check
+      if (!process.env.GEMINI_API_KEY) {
+        throw new Error('GEMINI_API_KEY environment variable is missing.');
+      }
+
       // 1. Get or create session
       if (!sessions[chatId]) {
         sessions[chatId] = {
@@ -124,12 +129,15 @@ Cevap:
 
     } catch (error) {
       console.error('AI Error:', error);
+      lastError = error instanceof Error ? error.message : String(error);
       bot.sendMessage(chatId, 'Bir hata oluştu, lütfen birazdan tekrar dene.');
     }
   });
 } else {
   console.warn('⚠️ TELEGRAM_BOT_TOKEN missing. Bot features disabled.');
 }
+
+let lastError: string | null = null;
 
 // API Routes
 app.use(express.json());
@@ -139,6 +147,7 @@ app.get('/api/status', (req, res) => {
     botActive: !!bot,
     sessionCount: Object.keys(sessions).length,
     tokenSet: !!token,
+    lastError,
     metrics: {
       totalMessages,
       uptime: Math.floor((Date.now() - startTime) / 1000),
