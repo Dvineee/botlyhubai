@@ -65,11 +65,19 @@ function setupBotLogic(instance: BotInstance) {
   if (!instance.token) return;
 
   try {
-    const bot = new TelegramBot(instance.token, { polling: true });
+    const isWebhook = !!process.env.PUBLIC_URL;
+    const bot = new TelegramBot(instance.token, { polling: !isWebhook });
     instance.bot = bot;
-    console.log(`🤖 [${instance.config.name}] Aktif Edildi`);
 
-    bot.on('message', async (msg) => {
+    if (isWebhook) {
+      const webhookUrl = `${process.env.PUBLIC_URL}/api/webhook/${instance.id}`;
+      bot.setWebHook(webhookUrl);
+      console.log(`📡 [${instance.config.name}] Webhook Modunda Başlatıldı: ${webhookUrl}`);
+    } else {
+      console.log(`🤖 [${instance.config.name}] Polling (Sürekli Dinleme) Modunda Başlatıldı`);
+    }
+
+    const messageHandler = async (msg: any) => {
       const chatId = msg.chat.id;
       const text = msg.text;
       if (!text) return;
@@ -136,9 +144,18 @@ Cevap:
       } catch (error) {
         console.error(`AI Hatası [${instance.config.name}]:`, error);
         instance.lastError = error instanceof Error ? error.message : String(error);
-        bot.sendMessage(chatId, 'Bir hata oluştu, lütfen birazdan tekrar dene.');
+        if (chatId) bot.sendMessage(chatId, 'Bir hata oluştu, lütfen birazdan tekrar dene.');
       }
-    });
+    };
+
+    if (!isWebhook) {
+      bot.on('message', messageHandler);
+    } else {
+      // Webhook handler'ı instance içinde tutalım ki API route'tan çağırabilelim
+      (instance as any).handleWebhookUpdate = (update: any) => {
+        if (update.message) messageHandler(update.message);
+      };
+    }
 
     bot.on('polling_error', (err) => {
       console.error(`Polling Hatası [${instance.config.name}]:`, err);
@@ -213,6 +230,16 @@ app.get('/api/bots', (req, res) => {
     sessionCount: Object.keys(b.sessions).length
   }));
   res.json(botList);
+});
+
+// Telegram Webhook Endpoint
+app.post('/api/webhook/:id', (req, res) => {
+  const { id } = req.params;
+  const instance = activeBots[id];
+  if (instance && (instance as any).handleWebhookUpdate) {
+    (instance as any).handleWebhookUpdate(req.body);
+  }
+  res.sendStatus(200);
 });
 
 app.post('/api/bots', async (req, res) => {
