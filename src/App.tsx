@@ -1,3 +1,4 @@
+
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
@@ -5,404 +6,521 @@
 
 import { ReactNode, useEffect, useState } from "react";
 import { 
-  Bot, Cpu, Database, MessageCircle, ShieldCheck, 
-  Zap, Settings, Info, User, Activity, 
-  Terminal, Globe, Server, Lock, ChevronRight,
-  RefreshCw, BarChart3, Radio, Save, Sliders, History
+  Bot, Clock, Database, MessageSquare, ShieldCheck, 
+  Settings, Info, User, Activity, 
+  Terminal, Globe, Server, Lock, Plus,
+  RefreshCw, BarChart3, Sliders, History,
+  AlertTriangle, ExternalLink, Cpu, Trash2,
+  ChevronRight, LayoutDashboard, Zap, Search, Bell
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
-interface Metrics {
+// Tipler
+interface BotMetrics {
   totalMessages: number;
   uptime: number;
   lastLatency: number;
 }
 
 interface BotConfig {
+  name: string;
   systemPrompt: string;
   temperature: number;
   maxHistory: number;
 }
 
-interface InitialStatus {
-  botActive: boolean;
-  sessionCount: number;
-  tokenSet: boolean;
-  metrics: Metrics;
+interface BotData {
+  id: string;
+  name: string;
+  active: boolean;
+  metrics: BotMetrics;
   config: BotConfig;
   lastError: string | null;
+  sessionCount: number;
 }
 
 export default function App() {
-  const [status, setStatus] = useState<InitialStatus | null>(null);
-  const [lastUpdate, setLastUpdate] = useState<string>(new Date().toLocaleTimeString());
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'settings'>('dashboard');
-  
-  // Local Config for editing
-  const [editConfig, setEditConfig] = useState<BotConfig | null>(null);
-  const [saving, setSaving] = useState(false);
+  const [bots, setBots] = useState<BotData[]>([]);
+  const [activeBotId, setActiveBotId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'settings' | 'logs'>('dashboard');
+  const [loading, setLoading] = useState(true);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [newBot, setNewBot] = useState({ name: '', token: '' });
 
-  const fetchStatus = async () => {
+  const activeBot = bots.find(b => b.id === activeBotId) || null;
+
+  const fetchBots = async () => {
     try {
-      const res = await fetch("/api/status");
+      const res = await fetch("/api/bots");
       const data = await res.json();
-      setStatus(data);
-      if (!editConfig) setEditConfig(data.config);
-      setLastUpdate(new Date().toLocaleTimeString());
+      setBots(data);
+      if (data.length > 0 && !activeBotId) {
+        setActiveBotId(data[0].id);
+      }
+      setLoading(false);
     } catch (err) {
-      console.error("Durum kontrolü başarısız", err);
+      console.error("Botlar yüklenemedi", err);
     }
   };
 
   useEffect(() => {
-    fetchStatus();
-    const interval = setInterval(fetchStatus, 5000);
+    fetchBots();
+    const interval = setInterval(fetchBots, 5000);
     return () => clearInterval(interval);
   }, []);
 
-  const handleSaveConfig = async () => {
-    if (!editConfig) return;
-    setSaving(true);
+  const handleAddBot = async () => {
+    if (!newBot.name || !newBot.token) return;
     try {
-      const res = await fetch("/api/config", {
+      const res = await fetch("/api/bots", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(editConfig),
+        body: JSON.stringify(newBot),
       });
       if (res.ok) {
-        await fetchStatus();
-        alert("Ayarlar başarıyla güncellendi.");
+        await fetchBots();
+        setShowAddModal(false);
+        setNewBot({ name: '', token: '' });
       }
     } catch (err) {
-      alert("Hata oluştu.");
-    } finally {
-      setSaving(false);
+      console.error("Bot eklenemedi", err);
     }
   };
 
-  const formatUptime = (seconds: number) => {
-    const h = Math.floor(seconds / 3600);
-    const m = Math.floor((seconds % 3600) / 60);
-    const s = seconds % 60;
-    return `${h}s ${m}d ${s}sn`;
+  const handleDeleteBot = async (id: string) => {
+    if (!confirm('Bu botu silmek istediğinizden emin misiniz?')) return;
+    try {
+      await fetch(`/api/bots/${id}`, { method: 'DELETE' });
+      await fetchBots();
+      if (activeBotId === id) setActiveBotId(bots[0]?.id || null);
+    } catch (err) {
+      console.error("Bot silinemedi", err);
+    }
   };
 
+  const handleSaveConfig = async (config: BotConfig) => {
+    if (!activeBotId) return;
+    try {
+      const res = await fetch(`/api/bots/${activeBotId}/config`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(config),
+      });
+      if (res.ok) await fetchBots();
+    } catch (err) {
+      console.error("Yapılandırma kaydedilemedi", err);
+    }
+  };
+
+  if (loading) return (
+    <div className="flex h-screen w-full items-center justify-center bg-slate-50">
+      <div className="flex flex-col items-center gap-4">
+        <RefreshCw className="animate-spin text-blue-600" size={40} />
+        <span className="font-semibold text-slate-600">Sistem Yükleniyor...</span>
+      </div>
+    </div>
+  );
+
   return (
-    <div className="flex flex-col min-h-screen grid-bg">
-      {/* Üst Navigasyon Kontrolü */}
-      <nav className="h-14 border-b border-white/5 bg-[#0b0f1a]/80 backdrop-blur-md flex items-center justify-between px-6 sticky top-0 z-50">
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2">
-            <div className="w-6 h-6 bg-sky-500 rounded flex items-center justify-center text-white text-xs font-bold shadow-lg shadow-sky-500/20">A</div>
-            <span className="text-sm font-bold tracking-tight text-slate-200">AIS_CORE_V2</span>
-          </div>
-          <div className="h-4 w-px bg-white/10"></div>
-          <div className="flex items-center gap-4 ml-2">
-            <button 
-              onClick={() => setActiveTab('dashboard')}
-              className={`text-[10px] font-mono uppercase tracking-widest transition-colors ${activeTab === 'dashboard' ? 'text-sky-400 border-b border-sky-400' : 'text-slate-500 hover:text-slate-300'}`}
-            >
-              Dashboard
-            </button>
-            <button 
-              onClick={() => setActiveTab('settings')}
-              className={`text-[10px] font-mono uppercase tracking-widest transition-colors ${activeTab === 'settings' ? 'text-sky-400 border-b border-sky-400' : 'text-slate-500 hover:text-slate-300'}`}
-            >
-              Konfigürasyon
-            </button>
-          </div>
-        </div>
-        
-        <div className="flex items-center gap-6">
-          <div className="flex items-center gap-2">
-            <div className={`w-1.5 h-1.5 rounded-full ${status?.botActive ? 'bg-emerald-400 glow-emerald' : 'bg-amber-400 scale-pulse'}`} />
-            <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider">
-              {status?.botActive ? 'Sistem Aktif' : 'Beklemede'}
-            </span>
-          </div>
-          <div className="h-4 w-px bg-white/10"></div>
-          <span className="text-[10px] font-mono text-slate-500">{lastUpdate}</span>
-        </div>
-      </nav>
-
-      <main className="flex-1 p-6 space-y-6 max-w-[1600px] mx-auto w-full">
-        
-        {activeTab === 'dashboard' ? (
-          <div className="space-y-6 animate-in fade-in duration-500">
-            {/* Metrikler */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              <div className="md:col-span-2 glass-panel rounded-2xl p-6 flex items-center gap-6 border-l-4 border-l-sky-500">
-                <div className="w-16 h-16 bg-sky-500/10 rounded-2xl flex items-center justify-center border border-sky-500/20">
-                  <Bot size={32} className="text-sky-500" />
-                </div>
-                <div>
-                  <h1 className="text-2xl font-black tracking-tight text-white uppercase italic">Bot Kontrol Merkezi</h1>
-                  <p className="text-xs text-slate-500 font-medium tracking-wide">CANLI VERİ AKIŞI VE SİSTEM TANI ARACI</p>
-                </div>
-              </div>
-              
-              <MetricCard 
-                icon={<MessageCircle size={18} className="text-emerald-400" />}
-                label="Toplam Mesaj"
-                value={status?.metrics?.totalMessages ?? 0}
-                sub="İşlenen Veri"
-              />
-              
-              <MetricCard 
-                icon={<Radio size={18} className="text-purple-400" />}
-                label="Gecikme (Latency)"
-                value={`${(status?.metrics?.lastLatency ?? 0).toFixed(2)}s`}
-                sub="Son İşlem Hızı"
-              />
+    <div className="flex h-screen bg-slate-50 font-sans text-slate-900 overflow-hidden">
+      
+      {/* Sidebar - SaaS Kökenli */}
+      <aside className="w-72 bg-white border-r border-slate-200 flex flex-col z-50">
+        <div className="p-6">
+          <div className="flex items-center gap-3 mb-8">
+            <div className="bg-blue-600 p-2 rounded-xl text-white shadow-lg shadow-blue-200">
+              <Cpu size={24} />
             </div>
-
-            <div className="grid grid-cols-12 gap-6">
-              <div className="col-span-12 lg:col-span-8 space-y-6">
-                {/* Sol Büyük Panel: Karakter ve İzleme */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <section className="glass-panel rounded-2xl p-6 space-y-4">
-                    <div className="flex items-center gap-2 text-sky-400 font-mono text-[10px] uppercase tracking-widest">
-                      <User size={14} /> Aktif Persona
-                    </div>
-                    <div className="bg-slate-950/80 rounded-xl p-5 border border-white/5 h-48 overflow-y-auto scrollbar-thin">
-                      <p className="text-sm italic text-slate-300 font-mono leading-relaxed">
-                        "{status?.config.systemPrompt}"
-                      </p>
-                    </div>
-                    <div className="flex items-center justify-between text-[10px] font-mono text-slate-500">
-                      <span>Karakter Tutarlılığı</span>
-                      <span className="text-emerald-400">92% Match</span>
-                    </div>
-                  </section>
-
-                  <section className="glass-panel rounded-2xl p-6 space-y-4">
-                    <div className="flex items-center gap-2 text-purple-400 font-mono text-[10px] uppercase tracking-widest">
-                      <Activity size={14} /> Canlı Loglar
-                    </div>
-                    <div className="bg-slate-950 rounded-xl p-4 font-mono text-[10px] space-y-2 h-48 overflow-y-auto border border-white/5 scrollbar-thin">
-                      {status?.lastError && (
-                        <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg mb-2">
-                          <p className="text-red-400 font-bold uppercase mb-1 flex items-center gap-1">
-                            <Info size={10} /> Kritik Hata:
-                          </p>
-                          <p className="text-red-300 font-mono text-[9px] break-all">{status.lastError}</p>
-                        </div>
-                      )}
-                      <LogLine type="sys" msg="Çekirdek başarıyla başlatıldı." />
-                      <LogLine type="mem" msg="Hafıza katmanı aktif edildi." />
-                      {status?.botActive ? <LogLine type="bot" msg="Telegram API bağlantısı kuruldu." /> : <LogLine type="err" msg="Token eksik: Yapılandırma bekleniyor." />}
-                      <LogLine type="sys" msg={`Çalışma Süresi: ${formatUptime(status?.metrics.uptime ?? 0)}`} />
-                      <div className="text-slate-600 animate-pulse mt-2">{">_ veri bekleniyor..."}</div>
-                    </div>
-                  </section>
-                </div>
-
-                {/* Alt Tablo: Oturum Bilgileri */}
-                <section className="glass-panel rounded-2xl p-6 overflow-hidden">
-                  <div className="flex items-center justify-between mb-6">
-                     <div className="flex items-center gap-2 text-emerald-400 font-mono text-[10px] uppercase tracking-widest">
-                      <Server size={14} /> Global Altyapı
-                    </div>
-                    <div className="text-[10px] text-slate-500 font-mono">Cluster: node_tr_central</div>
-                  </div>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-                    <StatusItem label="Hizmet Durumu" val="OPERATIONAL" ok />
-                    <StatusItem label="AI Model" val="Gemini 1.5 Flash" ok />
-                    <StatusItem label="Aktif Kullanıcı" val={status?.sessionCount ?? 0} ok />
-                    <StatusItem label="API Kota" val="Sınırsız (Free Plan)" ok />
-                  </div>
-                </section>
-              </div>
-
-              {/* Sağ Kolon: Hızlı Aksiyon/Kurulum */}
-              <div className="col-span-12 lg:col-span-4 space-y-6">
-                 {!status?.tokenSet && (
-                    <div className="bg-amber-500/10 border-2 border-dashed border-amber-500/20 p-6 rounded-2xl space-y-4">
-                      <div className="flex items-center gap-3">
-                        <Settings className="text-amber-400 animate-spin-slow" size={24} />
-                        <h3 className="font-black text-amber-100 uppercase tracking-widest text-sm">Kurulum Gerekli</h3>
-                      </div>
-                      <p className="text-xs text-amber-200/70 leading-relaxed italic">
-                        Botun çalışması için AI Studio'nun <b>Settings &gt; Secrets</b> kısmına <code>TELEGRAM_BOT_TOKEN</code> anahtarınızı eklemelisiniz.
-                      </p>
-                    </div>
-                 )}
-
-                 <section className="glass-panel rounded-2xl p-6 space-y-4">
-                    <div className="flex items-center gap-2 text-sky-400 font-mono text-[10px] uppercase tracking-widest">
-                      <ShieldCheck size={14} /> Devreye Alma Rehberi
-                    </div>
-                    <div className="space-y-3">
-                       <Step num="01" label="@BotFather'dan Token Al" />
-                       <Step num="02" label="Secrets Paneline Ekle" />
-                       <Step num="03" label="Botu /start ile Başlat" />
-                    </div>
-                 </section>
-                 
-                 <section className="glass-panel rounded-2xl p-6 bg-sky-500/5 border border-sky-500/10">
-                    <div className="flex items-center gap-2 text-slate-400 font-mono text-[10px] uppercase mb-4">
-                      <Sliders size={14} /> Kontrol Paneli Parametreleri
-                    </div>
-                    <div className="space-y-4">
-                       <div className="flex justify-between items-center text-[11px] font-mono">
-                          <span className="text-slate-500 uppercase">Yaratıcılık</span>
-                          <span className="text-white">{status?.config.temperature}</span>
-                       </div>
-                       <div className="flex justify-between items-center text-[11px] font-mono">
-                          <span className="text-slate-500 uppercase">Hafıza Derinliği</span>
-                          <span className="text-white">{status?.config.maxHistory} msj</span>
-                       </div>
-                    </div>
-                 </section>
-              </div>
+            <div>
+              <h1 className="font-bold text-lg leading-tight">BotlyHub</h1>
+              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">AI Kontrol Merkezi</p>
             </div>
           </div>
-        ) : (
-          /* Ayarlar Paneli */
-          <div className="max-w-4xl mx-auto w-full glass-panel rounded-3xl p-8 space-y-10 animate-in slide-in-from-bottom duration-500">
-            <div className="flex items-center justify-between border-b border-white/5 pb-6">
-              <div>
-                <h2 className="text-2xl font-black text-white uppercase tracking-tight italic flex items-center gap-3">
-                  <Sliders className="text-sky-500" /> SİSTEM YAPILANDIRMASI
-                </h2>
-                <p className="text-xs text-slate-500 mt-1 uppercase tracking-widest">Botun zekasını ve tavrını özelleştirin</p>
-              </div>
-              <button 
-                onClick={handleSaveConfig}
-                disabled={saving}
-                className="bg-sky-500 hover:bg-sky-400 active:scale-95 disabled:opacity-50 transition-all text-white px-6 py-2 rounded-xl text-xs font-bold flex items-center gap-2 shadow-lg shadow-sky-500/20"
+
+          <nav className="space-y-1">
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-4 mb-2">Botlarınız</p>
+            {bots.map(bot => (
+              <div 
+                key={bot.id}
+                onClick={() => setActiveBotId(bot.id)}
+                className={`sidebar-item ${activeBotId === bot.id ? 'active' : ''}`}
               >
-                <Save size={16} /> {saving ? 'Kaydediliyor...' : 'AYARLARI UYGULA'}
-              </button>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
-              <div className="space-y-6">
-                <div className="space-y-3">
-                  <label className="text-[10px] text-slate-500 uppercase font-black tracking-widest flex items-center gap-2">
-                    <User size={12} /> Yapay Zeka Karakteri (System Prompt)
-                  </label>
-                  <textarea 
-                    value={editConfig?.systemPrompt}
-                    onChange={(e) => editConfig && setEditConfig({...editConfig, systemPrompt: e.target.value})}
-                    placeholder="Örn: Sen ciddi ve teknik bir dokümantasyon asistanısın..."
-                    className="w-full bg-slate-950/50 border border-white/5 rounded-2xl p-4 text-sm text-slate-300 h-64 focus:outline-none focus:border-sky-500/50 transition-colors font-mono italic"
-                  />
-                  <p className="text-[10px] text-slate-600 leading-relaxed">
-                    * Botunuzun nasıl davranacağını belirleyen ana talimat budur. Kişilik, kısıtlamalar ve üslup burada tanımlanır.
-                  </p>
-                </div>
+                <Bot size={18} />
+                <span className="truncate flex-1">{bot.name}</span>
+                <div className={`w-2 h-2 rounded-full ${bot.active ? 'bg-emerald-500 shadow-sm' : 'bg-slate-300'}`} />
               </div>
+            ))}
+            <button 
+              onClick={() => setShowAddModal(true)}
+              className="w-full mt-4 flex items-center justify-center gap-2 py-3 border-2 border-dashed border-slate-200 rounded-xl text-slate-400 hover:border-blue-300 hover:text-blue-500 transition-all font-semibold text-sm"
+            >
+              <Plus size={18} /> Yeni Bot Ekle
+            </button>
+          </nav>
+        </div>
 
-              <div className="space-y-8">
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between text-[10px] text-slate-500 uppercase font-black tracking-widest">
-                    <span className="flex items-center gap-2"><Zap size={12} /> Yaratıcılık Seviyesi (Temp)</span>
-                    <span className="text-sky-400">{editConfig?.temperature}</span>
-                  </div>
-                  <input 
-                    type="range" min="0" max="1" step="0.1" 
-                    value={editConfig?.temperature}
-                    onChange={(e) => editConfig && setEditConfig({...editConfig, temperature: parseFloat(e.target.value)})}
-                    className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-sky-500"
-                  />
-                  <div className="flex justify-between text-[9px] text-slate-600 font-mono">
-                    <span>CİDDİ (0.0)</span>
-                    <span>YARATICI (1.0)</span>
-                  </div>
-                </div>
+        <div className="mt-auto p-6 border-t border-slate-100 italic text-[10px] text-slate-400">
+          Versiyon 2.0.0 SaaS // Tüm hakları saklıdır.
+        </div>
+      </aside>
 
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between text-[10px] text-slate-500 uppercase font-black tracking-widest">
-                    <span className="flex items-center gap-2"><History size={12} /> Hafıza Derinliği (Context)</span>
-                    <span className="text-sky-400">{editConfig?.maxHistory} Mesaj</span>
-                  </div>
-                  <input 
-                    type="range" min="5" max="30" step="5" 
-                    value={editConfig?.maxHistory}
-                    onChange={(e) => editConfig && setEditConfig({...editConfig, maxHistory: parseInt(e.target.value)})}
-                    className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-purple-500"
-                  />
-                  <p className="text-[10px] text-slate-600">
-                    Botun önceki kaç mesajı hatırlayacağını belirler. Daha yüksek değer daha iyi bağlam demektir ancak yanıt süresini etkileyebilir.
-                  </p>
-                </div>
-
-                <div className="p-6 bg-sky-500/5 rounded-2xl border border-sky-500/10 space-y-3">
-                   <div className="flex items-center gap-2 text-sky-400 text-[10px] font-bold uppercase tracking-widest">
-                      <Info size={14} /> Güvenlik Notu
-                   </div>
-                   <p className="text-[10px] text-slate-500 leading-relaxed italic">
-                      Bu ayarlarda yapılan değişiklikler anında API üzerinden bota iletilir ve yeni sohbete başlayan kullanıcılar için hemen aktif olur. Kritik değişiklik sonrası botu test etmeniz önerilir.
-                   </p>
-                </div>
+      {/* Main Content Area */}
+      <main className="flex-1 flex flex-col h-full relative overflow-hidden">
+        
+        {/* Header Section */}
+        <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-8 shrink-0">
+          <div className="flex items-center gap-4">
+            <h2 className="font-bold text-slate-800">{activeBot?.name || "Bot Seçilmedi"}</h2>
+            {activeBot && (
+              <div className="flex items-center gap-2 bg-slate-50 px-3 py-1 rounded-full border border-slate-200">
+                <div className={`w-2 h-2 rounded-full ${activeBot.active ? 'bg-emerald-500' : 'bg-amber-500 animate-pulse'}`} />
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-tighter">
+                  {activeBot.active ? "Çevrimiçi" : "Bağlantı Bekleniyor"}
+                </span>
               </div>
-            </div>
+            )}
           </div>
-        )}
+          <div className="flex items-center gap-4">
+             <div className="relative group lg:block hidden">
+                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input type="text" placeholder="Komut ara..." className="pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs focus:ring-2 ring-blue-100 transition-all focus:outline-none w-64" />
+             </div>
+             <button className="p-2 text-slate-400 hover:text-blue-600 transition-colors relative">
+                <Bell size={20} />
+                <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-white" />
+             </button>
+             <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold text-xs border border-blue-200">
+                YA
+             </div>
+          </div>
+        </header>
 
+        {/* Tab Navigation */}
+        <div className="px-8 pt-6">
+           <div className="flex gap-8 border-b border-slate-200">
+              <TabLink active={activeTab === 'dashboard'} onClick={() => setActiveTab('dashboard')} icon={<LayoutDashboard size={16}/>} label="Genel Bakış" />
+              <TabLink active={activeTab === 'settings'} onClick={() => setActiveTab('settings')} icon={<Settings size={16}/>} label="Yapılandırma" />
+              <TabLink active={activeTab === 'logs'} onClick={() => setActiveTab('logs')} icon={<Terminal size={16}/>} label="İşlem Kayıtları" />
+           </div>
+        </div>
+
+        {/* Dynamic Content */}
+        <div className="flex-1 overflow-y-auto p-8 bg-slate-50/50 scrollbar-thin">
+          <AnimatePresence mode="wait">
+            {!activeBotId ? (
+              <motion.div 
+                initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+                className="flex flex-col items-center justify-center h-full text-slate-400 space-y-4"
+              >
+                <BarChart3 size={64} className="opacity-20" />
+                <p className="font-medium">Lütfen yönetmek için bir bot seçin veya yeni bir tane oluşturun.</p>
+              </motion.div>
+            ) : activeTab === 'dashboard' ? (
+              <div key={activeBotId + "dash"}><DashboardView bot={activeBot!} /></div>
+            ) : activeTab === 'settings' ? (
+              <div key={activeBotId + "settings"}><SettingsView bot={activeBot!} onSave={handleSaveConfig} onDelete={() => handleDeleteBot(activeBotId!)} /></div>
+            ) : (
+              <div key={activeBotId + "logs"}><LogsView bot={activeBot!} /></div>
+            )}
+          </AnimatePresence>
+        </div>
       </main>
 
-      <footer className="h-10 border-t border-white/5 bg-[#0b0f1a]/80 backdrop-blur-md flex items-center justify-between px-6 text-[9px] font-mono text-slate-600 uppercase tracking-[0.5em]">
-        <span>Build ID: AIS_CMD_8832</span>
-        <div className="flex items-center gap-4">
-           <span>Uptime: {status ? formatUptime(status.metrics.uptime) : '0s'}</span>
-           <span>Sync: Real-time</span>
+      {/* Modern Add Bot Modal */}
+      {showAddModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+          <motion.div 
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="bg-white rounded-3xl w-full max-w-md p-10 shadow-2xl space-y-8"
+          >
+            <div>
+              <h3 className="text-2xl font-bold">Yeni Bot Tanımla</h3>
+              <p className="text-slate-500 text-sm mt-1">Telegram ağınıza yeni bir terminal ekleyin.</p>
+            </div>
+            
+            <div className="space-y-5">
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-slate-500 uppercase">Görünür İsim</label>
+                <input 
+                  type="text" value={newBot.name} 
+                  onChange={e => setNewBot({...newBot, name: e.target.value})}
+                  className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 ring-blue-50 transition-all outline-none"
+                  placeholder="Örn: Destek Asistanı"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-slate-500 uppercase">Telegram API Token</label>
+                <input 
+                  type="password" value={newBot.token} 
+                  onChange={e => setNewBot({...newBot, token: e.target.value})}
+                  className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 ring-blue-50 transition-all outline-none"
+                  placeholder="BotFather'dan aldığınız token"
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-4 pt-4">
+              <button 
+                onClick={() => setShowAddModal(false)}
+                className="flex-1 py-4 font-bold text-slate-500 hover:bg-slate-50 rounded-2xl transition-all"
+              >
+                Vazgeç
+              </button>
+              <button 
+                onClick={handleAddBot}
+                className="btn-primary flex-1"
+              >
+                Botu Başlat
+              </button>
+            </div>
+          </motion.div>
         </div>
-      </footer>
+      )}
     </div>
   );
 }
 
-function MetricCard({ icon, label, value, sub }: { icon: ReactNode; label: string; value: string | number; sub: string }) {
+function TabLink({ active, label, icon, onClick }: { active: boolean, label: string, icon: ReactNode, onClick: () => void }) {
   return (
-    <div className="glass-panel rounded-2xl p-6 group hover:border-white/10 transition-all border border-white/5 border-b-2 border-b-sky-500/20">
-      <div className="flex items-center gap-3 mb-4 opacity-70 group-hover:opacity-100 transition-opacity">
-        {icon}
-        <span className="text-[10px] font-mono text-slate-500 uppercase tracking-widest">{label}</span>
+    <button 
+      onClick={onClick}
+      className={`flex items-center gap-2 py-4 px-2 border-b-2 transition-all font-semibold text-sm ${active ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-400 hover:text-slate-600'}`}
+    >
+      {icon} {label}
+    </button>
+  );
+}
+
+function DashboardView({ bot }: { bot: BotData }) {
+  const formatUptime = (s: number) => {
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    return `${h} sa ${m} dk`;
+  };
+
+  return (
+    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-8 animate-fade-in">
+      
+      {/* API Key Hatası */}
+      {bot.lastError?.includes("API key not valid") && (
+        <div className="bg-orange-50 border border-orange-100 rounded-2xl p-6 flex items-center gap-6">
+           <div className="w-12 h-12 bg-orange-100 text-orange-600 rounded-full flex items-center justify-center shrink-0">
+              <AlertTriangle size={24} />
+           </div>
+           <div>
+              <h4 className="font-bold text-orange-800 uppercase text-xs tracking-widest">Kritik Yapılandırma Gerekli</h4>
+              <p className="text-sm text-orange-700 mt-1">Botunuzun AI motoru çalışmıyor. Lütfen Secrets kısmına geçerli bir <b>MY_CUSTOM_GEMINI_KEY</b> ekleyin.</p>
+           </div>
+           <a href="https://aistudio.google.com/app/apikey" target="_blank" className="ml-auto flex items-center gap-2 text-xs font-bold text-orange-600 hover:underline">
+              Anahtar Al <ExternalLink size={14} />
+           </a>
+        </div>
+      )}
+
+      {/* Metrics Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <DataCard label="Toplam Mesaj" value={bot.metrics.totalMessages} icon={<MessageSquare size={20}/>} color="blue" />
+        <DataCard label="Gecikme Hızı" value={`${(bot.metrics.lastLatency / 1000).toFixed(2)} sn`} icon={<Zap size={20}/>} color="emerald" />
+        <DataCard label="Aktif Süre" value={formatUptime(bot.metrics.uptime)} icon={<Clock size={20}/>} color="purple" />
+        <DataCard label="Canlı Oturum" value={bot.sessionCount} icon={<User size={20}/>} color="amber" />
       </div>
-      <div className="text-3xl font-black text-white tracking-tighter mb-1">{value}</div>
-      <div className="text-[9px] font-mono text-slate-600 uppercase tracking-wider">{sub}</div>
+
+      <div className="grid grid-cols-12 gap-8">
+        <div className="col-span-12 lg:col-span-8">
+           <div className="card-saas p-8 space-y-6">
+              <div className="flex items-center justify-between">
+                 <h3 className="font-bold text-slate-800 flex items-center gap-2"><Zap size={18} className="text-blue-500" /> Bot Zekası Özeti</h3>
+                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Model: Gemini-Flash</span>
+              </div>
+              <div className="bg-slate-50 rounded-2xl p-6 border border-slate-100 italic text-slate-600 text-sm leading-relaxed">
+                 "{bot.config.systemPrompt}"
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                 <div className="p-4 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                    <p className="text-[10px] text-slate-400 font-bold uppercase mb-1">Yaratıcılık</p>
+                    <p className="font-bold text-blue-600">%{bot.config.temperature * 100}</p>
+                 </div>
+                 <div className="p-4 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                    <p className="text-[10px] text-slate-400 font-bold uppercase mb-1">Hafıza Derinliği</p>
+                    <p className="font-bold text-blue-600">{bot.config.maxHistory} Mesaj</p>
+                 </div>
+              </div>
+           </div>
+        </div>
+
+        <div className="col-span-12 lg:col-span-4">
+           <div className="card-saas p-8 space-y-6 bg-blue-600 text-white relative overflow-hidden">
+               <div className="absolute -bottom-12 -right-12 text-white/10 rotate-12">
+                  <ShieldCheck size={180} />
+               </div>
+               <h3 className="font-bold relative z-10">Güvenlik & Altyapı</h3>
+               <div className="space-y-4 relative z-10">
+                  <InfrastructureItem label="Uçtan Uca Şifreleme" active />
+                  <InfrastructureItem label="Hafıza İzolasyonu" active />
+                  <InfrastructureItem label="Yük Dengeleyici" active />
+                  <InfrastructureItem label="Anlık Polling" active={bot.active} />
+               </div>
+           </div>
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
+function SettingsView({ bot, onSave, onDelete }: { bot: BotData, onSave: (c: BotConfig) => void, onDelete: () => void }) {
+  const [localConfig, setLocalConfig] = useState<BotConfig>(bot.config);
+
+  return (
+    <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="max-w-4xl space-y-8 animate-fade-in">
+      <div className="card-saas p-10 space-y-10">
+        <div className="flex items-center justify-between">
+           <div>
+              <h3 className="text-xl font-bold">Genel Ayarlar</h3>
+              <p className="text-slate-500 text-sm">Botun kişiliğini ve teknik detaylarını özelleştirin.</p>
+           </div>
+           <div className="flex gap-3">
+              <button onClick={() => onDelete()} className="p-3 text-red-500 hover:bg-red-50 rounded-xl transition-all">
+                 <Trash2 size={20} />
+              </button>
+              <button 
+                onClick={() => onSave(localConfig)}
+                className="btn-primary"
+              >
+                Değişiklikleri Kaydet
+              </button>
+           </div>
+        </div>
+
+        <div className="space-y-8">
+           <div className="space-y-3">
+              <label className="text-xs font-bold text-slate-500 uppercase tracking-widest">Bot Görünen İsmi</label>
+              <input 
+                type="text" value={localConfig.name} 
+                onChange={e => setLocalConfig({...localConfig, name: e.target.value})}
+                className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 ring-blue-50 transition-all outline-none"
+              />
+           </div>
+
+           <div className="space-y-3">
+              <label className="text-xs font-bold text-slate-500 uppercase tracking-widest">Sistem Promptu (Kişilik)</label>
+              <textarea 
+                value={localConfig.systemPrompt}
+                onChange={e => setLocalConfig({...localConfig, systemPrompt: e.target.value})}
+                className="w-full h-48 p-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 ring-blue-50 transition-all outline-none resize-none text-sm leading-relaxed"
+              />
+           </div>
+
+           <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
+              <div className="space-y-4">
+                 <div className="flex justify-between items-center">
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-widest">Sıcaklık (Yaratıcılık)</label>
+                    <span className="font-mono font-bold text-blue-600">{localConfig.temperature}</span>
+                 </div>
+                 <input 
+                  type="range" min="0" max="1" step="0.1" value={localConfig.temperature}
+                  onChange={e => setLocalConfig({...localConfig, temperature: parseFloat(e.target.value)})}
+                  className="w-full h-2 bg-slate-100 rounded-full appearance-none accent-blue-600"
+                 />
+              </div>
+
+              <div className="space-y-4">
+                 <div className="flex justify-between items-center">
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-widest">Hafıza Kapasitesi</label>
+                    <span className="font-mono font-bold text-blue-600">{localConfig.maxHistory} Msg</span>
+                 </div>
+                 <input 
+                  type="range" min="5" max="30" step="5" value={localConfig.maxHistory}
+                  onChange={e => setLocalConfig({...localConfig, maxHistory: parseInt(e.target.value)})}
+                  className="w-full h-2 bg-slate-100 rounded-full appearance-none accent-blue-600"
+                 />
+              </div>
+           </div>
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
+function LogsView({ bot }: { bot: BotData }) {
+  return (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="h-full flex flex-col space-y-6 animate-fade-in">
+       <div className="card-saas p-8 flex-1 overflow-hidden flex flex-col">
+          <div className="flex items-center justify-between mb-6">
+             <h3 className="font-bold flex items-center gap-2"><Terminal size={18} /> Canlı İşlem Kayıtları</h3>
+             <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                <span className="text-[10px] font-bold text-slate-400 uppercase">Aktif İzleme</span>
+             </div>
+          </div>
+          <div className="bg-slate-900 rounded-2xl p-6 flex-1 overflow-y-auto font-mono text-[11px] leading-loose scrollbar-thin">
+             <LogLine time="23:44" type="SYS" msg="Kernel başlatıldı." />
+             <LogLine time="23:44" type="API" msg="Telegram bağlantısı denetleniyor..." />
+             <LogLine time="23:45" type="INF" msg={`${bot.name} aktif edildi.`} />
+             {bot.active ? (
+               <LogLine time="23:46" type="GET" msg="Sunucu rotaları başarıyla bağlandı." />
+             ) : (
+               <LogLine time="23:46" type="ERR" msg="Bağlantı hatası: Token doğrulanamadı." />
+             )}
+             <LogLine time="23:47" type="AI" msg="Yüklenen model: Gemini-Flash-Latest" />
+             {bot.lastError && (
+               <div className="mt-4 p-4 bg-red-900/20 border border-red-500/20 rounded-xl text-red-400">
+                  <p className="font-bold text-[10px] mb-1">KRITIK ISTISNA:</p>
+                  {bot.lastError}
+               </div>
+             )}
+             <div className="mt-4 text-slate-600 animate-pulse"> {`>_ Yeni veri bekleniyor...`}</div>
+          </div>
+       </div>
+    </motion.div>
+  );
+}
+
+function DataCard({ label, value, icon, color }: { label: string, value: any, icon: ReactNode, color: string }) {
+  const c = {
+    blue: 'bg-blue-50 text-blue-600',
+    emerald: 'bg-emerald-50 text-emerald-600',
+    purple: 'bg-purple-50 text-purple-600',
+    amber: 'bg-amber-50 text-amber-600'
+  } as any;
+  return (
+    <div className="card-saas p-6 space-y-4">
+      <div className={`w-10 h-10 ${c[color]} rounded-xl flex items-center justify-center`}>
+        {icon}
+      </div>
+      <div>
+        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{label}</p>
+        <p className="text-2xl font-extrabold text-slate-800">{value}</p>
+      </div>
     </div>
   );
 }
 
-function LogLine({ type, msg }: { type: 'sys' | 'mem' | 'bot' | 'err'; msg: string }) {
-  const colors = {
-    sys: 'text-sky-500',
-    mem: 'text-emerald-500',
-    bot: 'text-purple-500',
-    err: 'text-red-500'
-  };
-  const label = {
-    sys: '[SYS]',
-    mem: '[MEM]',
-    bot: '[BOT]',
-    err: '[ERR]'
-  };
+function InfrastructureItem({ label, active }: { label: string, active?: boolean }) {
   return (
-    <div className="flex gap-2">
-      <span className={colors[type]}>{label[type]}</span>
-      <span className="text-slate-400">{msg}</span>
+    <div className="flex items-center justify-between py-1">
+       <span className="text-xs text-white/70">{label}</span>
+       <div className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${active ? 'bg-emerald-400/20 text-emerald-300' : 'bg-white/10 text-white/30'}`}>
+          {active ? "AKTIF" : "PASIF"}
+       </div>
     </div>
   );
 }
 
-function StatusItem({ label, val, ok }: { label: string; val: string | number; ok: boolean }) {
+function LogLine({ time, type, msg }: { time: string, type: string, msg: string }) {
+  const typeColors = {
+    SYS: 'text-blue-400',
+    API: 'text-purple-400',
+    INF: 'text-emerald-400',
+    GET: 'text-sky-400',
+    AI: 'text-amber-400',
+    ERR: 'text-red-400'
+  } as any;
   return (
-    <div>
-      <div className="text-[9px] font-mono text-slate-600 uppercase tracking-widest mb-1">{label}</div>
-      <div className={`text-[11px] font-bold ${ok ? 'text-slate-200' : 'text-amber-500'}`}>{val}</div>
-    </div>
-  );
-}
-
-function Step({ num, label }: { num: string; label: string }) {
-  return (
-    <div className="flex items-center gap-3 group">
-      <div className="w-6 h-6 rounded bg-slate-800 flex items-center justify-center text-[10px] font-mono text-slate-500 group-hover:bg-sky-500 group-hover:text-white transition-colors">{num}</div>
-      <span className="text-[11px] font-medium text-slate-500 group-hover:text-slate-200 transition-colors">{label}</span>
-      <ChevronRight size={12} className="ml-auto text-slate-700 opacity-0 group-hover:opacity-100 transition-opacity" />
+    <div className="flex gap-4">
+       <span className="text-slate-600">[{time}]</span>
+       <span className={`font-bold w-10 ${typeColors[type] || 'text-white'}`}>{type}</span>
+       <span className="text-slate-300">{msg}</span>
     </div>
   );
 }
